@@ -37,6 +37,29 @@ svg{width:100%;height:auto;display:block;touch-action:none;user-select:none;-web
 .track{height:16px;background:var(--line);border-radius:99px;overflow:hidden}
 .fill{height:100%;border-radius:99px;width:0;transition:width .25s ease}
 .pct{text-align:right;font-variant-numeric:tabular-nums;color:var(--mute)}
+.card{position:relative}
+.pcts{position:absolute;top:12px;left:12px;display:grid;gap:4px;z-index:2;pointer-events:none}
+@property --p{syntax:'<percentage>';inherits:false;initial-value:0%}
+.pc{--p:0%;min-width:84px;font-weight:800;font-size:.9rem;padding:3px 10px;border-radius:99px;background:linear-gradient(to right,var(--fill) var(--p),var(--base) var(--p));border:2px solid currentColor;font-variant-numeric:tabular-nums;transition:--p .25s ease}
+.pc.h{color:#92400e;--fill:#fcd34d;--base:#fef3c7}.pc.s{color:#155e75;--fill:#67e8f9;--base:#cffafe}.pc.q{color:#4c1d95;--fill:#c4b5fd;--base:#ede9fe}
+.chipwrap{display:none;margin-top:12px}
+.chiphint{color:var(--mute);font-size:.85rem;padding:0 4px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:8px 2px 10px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.chip{flex:none;display:flex;align-items:stretch;border:2px solid var(--line);border-radius:99px;background:var(--card);overflow:hidden;scroll-snap-align:start;transition:border-color .2s,background .2s}
+.chip button,.chiprst{font:inherit;border:0;background:none;color:var(--ink);cursor:pointer;min-height:44px}
+.chip .tg{padding:0 12px 0 16px;font-weight:700;font-size:.9rem;white-space:nowrap}
+.chip .inf{width:44px;font-weight:800;font-style:italic;font-family:Georgia,serif;font-size:1.05rem;color:#4c1d95;background:#ddd6fe}
+.chip.on{border-color:#8b5cf6;background:color-mix(in srgb,#8b5cf6 22%,var(--card))}
+.chip.on .tg::before{content:"\2713 "}
+.chiprst{flex:none;border:2px dashed var(--line);border-radius:99px;padding:0 16px;font-weight:700;font-size:.9rem;white-space:nowrap}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:52vh;overflow:auto;background:var(--card);color:var(--ink);border-radius:22px 22px 0 0;box-shadow:0 -10px 40px rgba(40,20,90,.3);border-top:1px solid var(--line);padding:10px 18px calc(18px + env(safe-area-inset-bottom,0px));transform:translateY(110%);visibility:hidden;transition:transform .28s ease,visibility 0s .28s;z-index:50}
+.sheet.open{transform:none;visibility:visible;transition:transform .28s ease}
+.grab{width:44px;height:5px;border-radius:99px;background:var(--line);margin:0 auto 10px}
+.shead{display:flex;align-items:center;gap:12px}
+.shead .ttl{flex:1}
+.sx{font:inherit;font-weight:800;width:44px;height:44px;border:0;border-radius:50%;background:#ddd6fe;color:#4c1d95;cursor:pointer}
+@media (max-width:959px){.info{display:none}.chipwrap{display:block}}
+@media (min-width:960px){.sheet{display:none}}
 .disclaimer{text-align:center;color:var(--mute);font-size:.85rem;font-style:italic;margin:-8px 0 16px}
 .layout{width:100%;max-width:640px}
 .info{margin-top:22px}
@@ -72,6 +95,7 @@ svg{width:100%;height:auto;display:block;touch-action:none;user-select:none;-web
   <p class="sub">Drag the dot to where your local AI setup sits. The closer to a corner, the better it is on that.</p>
   <p class="disclaimer">Not an exact science: new models, quantisation and efficiency tricks keep shifting the edges.</p>
   <div class="card">
+    <div class="pcts" aria-hidden="true"><div class="pc h">💷 <span id="oH">0%</span></div><div class="pc s">⚡ <span id="oS">0%</span></div><div class="pc q">🧠 <span id="oQ">0%</span></div></div>
     <svg id="svg" viewBox="0 0 600 530" role="img" aria-label="Triangle with corners hardware cost, AI speed and AI quality. Drag the marker.">
       <defs>
         <clipPath id="tri"><polygon points="300,60 545,470 55,470"/></clipPath>
@@ -106,6 +130,7 @@ svg{width:100%;height:auto;display:block;touch-action:none;user-select:none;-web
     </svg>
   </div>
 
+  <div class="chipwrap"><div class="chiphint">Tap a chip to switch it on. Tap <b>i</b> for the details.</div><div class="chips" id="chips"></div></div>
   <div id="verdict">
     <p id="vt">Place your setup 👆</p>
     <p id="vd">Drag the dot anywhere inside the triangle to see what to expect.</p>
@@ -174,7 +199,7 @@ svg{width:100%;height:auto;display:block;touch-action:none;user-select:none;-web
     for(var k in vals){
       var pct=Math.round(Math.max(0,Math.min(1,vals[k]))*100);
       document.getElementById('b'+k).style.width=pct+'%';
-      document.getElementById('p'+k).textContent=pct+'%';
+      document.getElementById('p'+k).textContent=pct+'%';document.getElementById('o'+k).textContent=pct+'%';document.getElementById('o'+k).parentNode.style.setProperty('--p',pct+'%');
     }
     var v=document.getElementById('verdict');
     if(placed){
@@ -222,6 +247,43 @@ svg{width:100%;height:auto;display:block;touch-action:none;user-select:none;-web
     list.appendChild(c);
   });
   document.getElementById('reset').addEventListener('click',function(){list.querySelectorAll('input').forEach(function(i){i.checked=false;});applyToggles();});
+  var SHORT=["Quantised","MoE","Tuned engine","Data centre","RAM offload","Big context","Tuned small"];
+  var inputs=list.querySelectorAll('input'),chipsEl=document.getElementById('chips'),cur=-1,chipEls=[];
+  var sheet=document.createElement('div');sheet.className='sheet';sheet.setAttribute('aria-hidden','true');
+  sheet.innerHTML='<div class="grab"></div><div class="shead"><label class="sw"><input type="checkbox" id="sin" aria-label="Switch on"><span class="knob"></span></label><div class="ttl" id="stt"></div><button class="sx" type="button" aria-label="Close">✕</button></div><p class="plain" id="sp"></p><div class="deep"><p><b>How it affects the triangle.</b> <span id="sh"></span></p><p><b>In numbers.</b> <span id="sn"></span></p></div>';
+  document.body.appendChild(sheet);
+  var sin=document.getElementById('sin');
+  function closeSheet(){cur=-1;sheet.classList.remove('open');sheet.setAttribute('aria-hidden','true');}
+  function openSheet(i){
+    if(cur===i){closeSheet();return;}
+    cur=i;var tp=TOPICS[i];
+    document.getElementById('stt').textContent=tp.e+' '+tp.t;
+    document.getElementById('sp').textContent=tp.plain;
+    document.getElementById('sh').textContent=tp.how;
+    document.getElementById('sn').textContent=tp.more;
+    sin.checked=inputs[i].checked;sheet.scrollTop=0;
+    sheet.classList.add('open');sheet.setAttribute('aria-hidden','false');
+  }
+  function syncChips(){
+    chipEls.forEach(function(c,i){var on=inputs[i].checked;c.classList.toggle('on',on);c.querySelector('.tg').setAttribute('aria-pressed',on);});
+    if(cur>=0)sin.checked=inputs[cur].checked;
+  }
+  function flip(i,val){inputs[i].checked=val;inputs[i].dispatchEvent(new Event('change'));}
+  TOPICS.forEach(function(tp,i){
+    var c=document.createElement('div');c.className='chip';
+    c.innerHTML='<button class="tg" type="button" aria-pressed="false">'+tp.e+' '+SHORT[i]+'</button><button class="inf" type="button" aria-label="About '+tp.t+'">i</button>';
+    c.querySelector('.tg').addEventListener('click',function(){flip(i,!inputs[i].checked);});
+    c.querySelector('.inf').addEventListener('click',function(){openSheet(i);});
+    chipsEl.appendChild(c);chipEls.push(c);
+  });
+  var rb=document.createElement('button');rb.type='button';rb.className='chiprst';rb.textContent='↺ Reset';
+  rb.addEventListener('click',function(){document.getElementById('reset').click();});
+  chipsEl.appendChild(rb);
+  inputs.forEach(function(inp){inp.addEventListener('change',syncChips);});
+  document.getElementById('reset').addEventListener('click',syncChips);
+  sin.addEventListener('change',function(){if(cur>=0)flip(cur,sin.checked);});
+  sheet.querySelector('.sx').addEventListener('click',closeSheet);
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSheet();});
   var root=document.documentElement,btn=document.getElementById('theme');
   function isDark(){var t=root.getAttribute('data-theme');return t?t==='dark':matchMedia('(prefers-color-scheme:dark)').matches;}
   function sync(){btn.textContent=isDark()?'☀️ Light mode':'🌙 Dark mode';}
